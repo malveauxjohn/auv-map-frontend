@@ -9,9 +9,6 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// 🔗 BACKEND API
-const API = "https://my-map-backend.onrender.com";
-
 // 🎨 Colors
 const iconColors = {
   Restaurants: "red",
@@ -32,7 +29,7 @@ const textColors = {
   orange: "#ef6c00",
   blue: "#1565c0",
   black: "#000",
-  blue: "#1565c0",
+  cyan: "#00838f",
   yellow: "#f9a825",
   grey: "#555"
 };
@@ -46,9 +43,6 @@ function createIcon(color) {
     iconAnchor: [12, 41]
   });
 }
-
-// seed fallback
-const seedLocations = [];
 
 function ClickHandler({ onMapClick }) {
   useMapEvents({
@@ -66,7 +60,7 @@ function MapController({ setMap }) {
 }
 
 export default function App() {
-  const [categories] = useState([
+  const categories = [
     "Restaurants",
     "Groceries",
     "Lodging",
@@ -76,9 +70,10 @@ export default function App() {
     "Safety Gear Stores",
     "Marine and Outdoors Stores",
     "Miscellaneous"
-  ]);
+  ];
 
-  const [locations, setLocations] = useState(seedLocations);
+  const [locations, setLocations] = useState([]);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const [activeCategories, setActiveCategories] = useState(
     Object.fromEntries(categories.map(c => [c, true]))
@@ -96,21 +91,13 @@ export default function App() {
 
   const itemRefs = useRef({});
 
-  // 🔥 LOAD FROM BACKEND
+  // 🔥 FETCH FROM BACKEND
   useEffect(() => {
-    fetch(`${API}/locations`)
+    fetch("https://my-map-backend.onrender.com/locations")
       .then(res => res.json())
-      .then(data => {
-        if (data.length === 0) {
-          setLocations(seedLocations);
-        } else {
-          setLocations(data);
-        }
-      })
-      .catch(err => console.error(err));
+      .then(data => setLocations(data));
   }, []);
 
-  // 🔥 scroll into view
   useEffect(() => {
     if (selectedId && itemRefs.current[selectedId]) {
       itemRefs.current[selectedId].scrollIntoView({
@@ -124,34 +111,26 @@ export default function App() {
     setPendingPos(latlng);
   }
 
-  // 🔥 ADD / UPDATE (BACKEND)
-  function addOrUpdateLocation() {
+  async function addOrUpdateLocation() {
     if (!name.trim() || !pendingPos) return;
 
     if (editingId) {
-      fetch(`${API}/locations/${editingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          category,
-          description,
-          lat: pendingPos.lat,
-          lng: pendingPos.lng
-        })
-      }).then(() => {
-        setLocations(prev =>
-          prev.map(l =>
-            l.id === editingId
-              ? { ...l, name, category, description, lat: pendingPos.lat, lng: pendingPos.lng }
-              : l
-          )
-        );
-      });
-
-      setEditingId(null);
+      await fetch(
+        `https://my-map-backend.onrender.com/locations/${editingId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            category,
+            description,
+            lat: pendingPos.lat,
+            lng: pendingPos.lng
+          })
+        }
+      );
     } else {
-      fetch(`${API}/locations`, {
+      await fetch("https://my-map-backend.onrender.com/locations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -161,26 +140,26 @@ export default function App() {
           lat: pendingPos.lat,
           lng: pendingPos.lng
         })
-      })
-        .then(res => res.json())
-        .then(newLoc => {
-          setLocations(prev => [...prev, { ...newLoc, name, category, description, lat: pendingPos.lat, lng: pendingPos.lng }]);
-        });
+      });
     }
+
+    const res = await fetch("https://my-map-backend.onrender.com/locations");
+    const data = await res.json();
+    setLocations(data);
 
     setName("");
     setDescription("");
     setPendingPos(null);
+    setEditingId(null);
     setShowDescInput(false);
   }
 
-  // 🔥 DELETE (BACKEND)
-  function deleteLocation(id) {
-    fetch(`${API}/locations/${id}`, {
+  async function deleteLocation(id) {
+    await fetch(`https://my-map-backend.onrender.com/locations/${id}`, {
       method: "DELETE"
-    }).then(() => {
-      setLocations(prev => prev.filter(l => l.id !== id));
     });
+
+    setLocations(prev => prev.filter(l => l.id !== id));
   }
 
   function startEdit(loc) {
@@ -211,50 +190,106 @@ export default function App() {
     if (!map) return;
     setSelectedId(loc.id);
     map.flyTo([loc.lat, loc.lng], 16);
+    setPanelOpen(false); // 🔥 closes panel on mobile
   }
 
   return (
-    <div style={{ display: "flex" }}>
+    <div style={{ height: "100vh", width: "100%" }}>
+      
+      {/* ☰ MENU BUTTON */}
+      <button
+        onClick={() => setPanelOpen(true)}
+        style={{
+          position: "absolute",
+          top: 10,
+          right: 30,
+          zIndex: 1000,
+          padding: "10px 15px",
+          fontSize: 18,
+          background: "#fff",
+          border: "1px solid #ccc",
+          borderRadius: 5,
+          cursor: "pointer"
+        }}
+      >
+        ☰
+      </button>
+
       {/* MAP */}
-      <div style={{ height: "100vh", width: "70%" }}>
-        <MapContainer center={[61.5996, 5.0328]} zoom={13} style={{ height: "100%" }}>
-          <TileLayer
-            attribution="© OpenStreetMap"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+      <MapContainer
+        center={[61.5996, 5.0328]}
+        zoom={13}
+        style={{ height: "100%", width: "100%" }}
+      >
+        <TileLayer
+          attribution="© OpenStreetMap"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
 
-          <ClickHandler onMapClick={handleMapClick} />
-          <MapController setMap={setMap} />
+        <ClickHandler onMapClick={handleMapClick} />
+        <MapController setMap={setMap} />
 
-          {pendingPos && (
-            <Marker position={[pendingPos.lat, pendingPos.lng]}>
-              <Popup>Selected</Popup>
+        {pendingPos && (
+          <Marker position={[pendingPos.lat, pendingPos.lng]}>
+            <Popup>Selected</Popup>
+          </Marker>
+        )}
+
+        {locations
+          .filter(loc => activeCategories[loc.category])
+          .map(loc => (
+            <Marker
+              key={loc.id}
+              position={[loc.lat, loc.lng]}
+              icon={createIcon(iconColors[loc.category] || "grey")}
+              eventHandlers={{
+                click: () => zoomToLocation(loc)
+              }}
+            >
+              <Popup>
+                <b>{loc.name}</b><br />
+                {loc.category}<br />
+                <small>{loc.description}</small>
+              </Popup>
             </Marker>
-          )}
+          ))}
+      </MapContainer>
 
-          {locations
-            .filter(loc => activeCategories[loc.category])
-            .map(loc => (
-              <Marker
-                key={loc.id}
-                position={[loc.lat, loc.lng]}
-                icon={createIcon(iconColors[loc.category] || "grey")}
-                eventHandlers={{
-                  click: () => zoomToLocation(loc)
-                }}
-              >
-                <Popup>
-                  <b>{loc.name}</b><br />
-                  {loc.category}<br />
-                  <small>{loc.description}</small>
-                </Popup>
-              </Marker>
-            ))}
-        </MapContainer>
-      </div>
+      {/* OVERLAY */}
+      {panelOpen && (
+        <div
+          onClick={() => setPanelOpen(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "rgba(0,0,0,0.4)",
+            zIndex: 999
+          }}
+        />
+      )}
 
-      {/* SIDE PANEL */}
-      <div style={{ width: "30%", padding: 20, overflowY: "auto", maxHeight: "100vh" }}>
+      {/* SLIDE PANEL */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          right: panelOpen ? "20px" : "-320px",
+          width: 300,
+          height: "100%",
+          background: "#fff",
+          padding: 20,
+          overflowY: "auto",
+          zIndex: 1000,
+          transition: "right 0.3s ease",
+		  boxShadow: "-2px 0 10px rgba (0,0,0,0.2)",
+		  borderRadius: "10px 0 0 10px"
+        }}
+      >
+        <button onClick={() => setPanelOpen(false)}>Close</button>
+
         <h2>{editingId ? "Edit Location" : "Add Location"}</h2>
 
         <input
@@ -280,19 +315,18 @@ export default function App() {
 
         {showDescInput && (
           <textarea
-            placeholder="Describe items/services..."
+            placeholder="Describe..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             style={{ width: "100%", marginTop: 10 }}
           />
         )}
 
-        <button onClick={addOrUpdateLocation} disabled={!pendingPos || !name.trim()}>
+        <button onClick={addOrUpdateLocation}>
           {editingId ? "Update" : "Save"}
         </button>
 
         <hr />
-
         <h2>Categories</h2>
 
         {categories.map(cat => (
@@ -325,15 +359,13 @@ export default function App() {
                         paddingLeft: 20,
                         display: "flex",
                         justifyContent: "space-between",
-                        alignItems: "center",
                         cursor: "pointer",
                         color: textColors[color],
-                        background: selectedId === l.id ? "#ddd" : "transparent",
-                        borderRadius: 5
+                        background:
+                          selectedId === l.id ? "#ddd" : "transparent"
                       }}
                     >
                       <span>• {l.name}</span>
-
                       <span>
                         <button onClick={() => startEdit(l)}>✏️</button>
                         <button onClick={() => deleteLocation(l.id)}>🗑</button>
