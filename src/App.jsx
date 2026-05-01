@@ -89,10 +89,10 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
 
   const [image, setImage] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const itemRefs = useRef({});
 
-  // 🔥 FETCH FROM BACKEND
   useEffect(() => {
     fetch("https://my-map-backend.onrender.com/locations")
       .then(res => res.json())
@@ -117,60 +117,73 @@ export default function App() {
 
     let imageUrl = null;
 
-    // 🔥 Upload image
-    if (image) {
-      const formData = new FormData();
-      formData.append("image", image);
+    try {
+      if (image) {
+        const formData = new FormData();
+        formData.append("image", image);
 
-      const uploadRes = await fetch("https://my-map-backend.onrender.com/upload", {
-        method: "POST",
-        body: formData
-      });
+        const uploadRes = await fetch("https://my-map-backend.onrender.com/upload", {
+          method: "POST",
+          body: formData
+        });
 
-      const uploadData = await uploadRes.json();
-      imageUrl = uploadData.imageUrl;
+        const text = await uploadRes.text();
+
+        let uploadData;
+        try {
+          uploadData = JSON.parse(text);
+        } catch {
+          alert("Image upload failed");
+          return;
+        }
+
+        imageUrl = uploadData.imageUrl;
+      }
+
+      const payload = {
+        name,
+        category,
+        description,
+        lat: pendingPos.lat,
+        lng: pendingPos.lng,
+        image_url: imageUrl
+      };
+
+      if (editingId) {
+        await fetch(`https://my-map-backend.onrender.com/locations/${editingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        setEditingId(null);
+      } else {
+        await fetch("https://my-map-backend.onrender.com/locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      const res = await fetch("https://my-map-backend.onrender.com/locations");
+      const data = await res.json();
+      setLocations(data);
+
+      setName("");
+      setDescription("");
+      setImage(null);
+      setPendingPos(null);
+      setShowDescInput(false);
+
+    } catch (err) {
+      console.error(err);
+      alert("Something failed");
     }
-
-    const payload = {
-      name,
-      category,
-      description,
-      lat: pendingPos.lat,
-      lng: pendingPos.lng,
-      image_url: imageUrl
-    };
-
-    if (editingId) {
-      await fetch(`https://my-map-backend.onrender.com/locations/${editingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      setEditingId(null);
-    } else {
-      await fetch("https://my-map-backend.onrender.com/locations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-    }
-
-    const res = await fetch("https://my-map-backend.onrender.com/locations");
-    const data = await res.json();
-    setLocations(data);
-
-    setName("");
-    setDescription("");
-    setImage(null);
-    setPendingPos(null);
-    setShowDescInput(false);
   }
 
   async function deleteLocation(id) {
     await fetch(`https://my-map-backend.onrender.com/locations/${id}`, {
       method: "DELETE"
     });
-
     setLocations(prev => prev.filter(l => l.id !== id));
   }
 
@@ -214,7 +227,7 @@ export default function App() {
         style={{
           position: "absolute",
           top: 10,
-          right: 10,
+          right: 30,
           zIndex: 1000,
           padding: "10px 15px",
           fontSize: 18,
@@ -272,13 +285,42 @@ export default function App() {
                       marginTop: "5px",
                       cursor: "pointer"
                     }}
-                    onClick={() => window.open(loc.image_url, "_blank")}
+                    onClick={() => setSelectedImage(loc.image_url)}
                   />
                 )}
               </Popup>
             </Marker>
           ))}
       </MapContainer>
+
+      {/* IMAGE MODAL */}
+      {selectedImage && (
+        <div
+          onClick={() => setSelectedImage(null)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(0,0,0,0.8)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 2000
+          }}
+        >
+          <img
+            src={selectedImage}
+            alt=""
+            style={{
+              maxWidth: "90%",
+              maxHeight: "90%",
+              borderRadius: "10px"
+            }}
+          />
+        </div>
+      )}
 
       {/* OVERLAY */}
       {panelOpen && (
@@ -347,7 +389,6 @@ export default function App() {
           />
         )}
 
-        {/* IMAGE UPLOAD */}
         <input
           type="file"
           accept="image/*"
