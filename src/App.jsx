@@ -29,7 +29,6 @@ const textColors = {
   orange: "#ef6c00",
   blue: "#1565c0",
   black: "#000",
-  cyan: "#00838f",
   yellow: "#f9a825",
   grey: "#555"
 };
@@ -89,6 +88,8 @@ export default function App() {
   const [map, setMap] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
 
+  const [image, setImage] = useState(null);
+
   const itemRefs = useRef({});
 
   // 🔥 FETCH FROM BACKEND
@@ -114,32 +115,43 @@ export default function App() {
   async function addOrUpdateLocation() {
     if (!name.trim() || !pendingPos) return;
 
+    let imageUrl = null;
+
+    // 🔥 Upload image
+    if (image) {
+      const formData = new FormData();
+      formData.append("image", image);
+
+      const uploadRes = await fetch("https://my-map-backend.onrender.com/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      const uploadData = await uploadRes.json();
+      imageUrl = uploadData.imageUrl;
+    }
+
+    const payload = {
+      name,
+      category,
+      description,
+      lat: pendingPos.lat,
+      lng: pendingPos.lng,
+      image_url: imageUrl
+    };
+
     if (editingId) {
-      await fetch(
-        `https://my-map-backend.onrender.com/locations/${editingId}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name,
-            category,
-            description,
-            lat: pendingPos.lat,
-            lng: pendingPos.lng
-          })
-        }
-      );
+      await fetch(`https://my-map-backend.onrender.com/locations/${editingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      setEditingId(null);
     } else {
       await fetch("https://my-map-backend.onrender.com/locations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          category,
-          description,
-          lat: pendingPos.lat,
-          lng: pendingPos.lng
-        })
+        body: JSON.stringify(payload)
       });
     }
 
@@ -149,8 +161,8 @@ export default function App() {
 
     setName("");
     setDescription("");
+    setImage(null);
     setPendingPos(null);
-    setEditingId(null);
     setShowDescInput(false);
   }
 
@@ -190,19 +202,19 @@ export default function App() {
     if (!map) return;
     setSelectedId(loc.id);
     map.flyTo([loc.lat, loc.lng], 16);
-    setPanelOpen(false); // 🔥 closes panel on mobile
+    setPanelOpen(false);
   }
 
   return (
     <div style={{ height: "100vh", width: "100%" }}>
       
-      {/* ☰ MENU BUTTON */}
+      {/* MENU BUTTON */}
       <button
         onClick={() => setPanelOpen(true)}
         style={{
           position: "absolute",
           top: 10,
-          right: 30,
+          right: 10,
           zIndex: 1000,
           padding: "10px 15px",
           fontSize: 18,
@@ -249,7 +261,20 @@ export default function App() {
               <Popup>
                 <b>{loc.name}</b><br />
                 {loc.category}<br />
-                <small>{loc.description}</small>
+                <small>{loc.description}</small><br />
+
+                {loc.image_url && (
+                  <img
+                    src={loc.image_url}
+                    alt=""
+                    style={{
+                      width: "100px",
+                      marginTop: "5px",
+                      cursor: "pointer"
+                    }}
+                    onClick={() => window.open(loc.image_url, "_blank")}
+                  />
+                )}
               </Popup>
             </Marker>
           ))}
@@ -276,7 +301,7 @@ export default function App() {
         style={{
           position: "fixed",
           top: 0,
-          right: panelOpen ? "20px" : "-320px",
+          right: panelOpen ? "10px" : "-320px",
           width: 300,
           height: "100%",
           background: "#fff",
@@ -284,8 +309,8 @@ export default function App() {
           overflowY: "auto",
           zIndex: 1000,
           transition: "right 0.3s ease",
-		  boxShadow: "-2px 0 10px rgba (0,0,0,0.2)",
-		  borderRadius: "10px 0 0 10px"
+          boxShadow: "-2px 0 10px rgba(0,0,0,0.2)",
+          borderRadius: "10px 0 0 10px"
         }}
       >
         <button onClick={() => setPanelOpen(false)}>Close</button>
@@ -321,6 +346,14 @@ export default function App() {
             style={{ width: "100%", marginTop: 10 }}
           />
         )}
+
+        {/* IMAGE UPLOAD */}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setImage(e.target.files[0])}
+          style={{ marginTop: 10 }}
+        />
 
         <button onClick={addOrUpdateLocation}>
           {editingId ? "Update" : "Save"}
