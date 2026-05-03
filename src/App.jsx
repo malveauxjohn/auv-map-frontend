@@ -113,7 +113,7 @@ export default function App() {
   }
 
   async function addOrUpdateLocation() {
-    if (!name.trim() || !pendingPos) return;
+	if (!name.trim() || (!pendingPos && !editingId)) return;
 
     let imageUrl = null;
 
@@ -136,19 +136,25 @@ export default function App() {
           alert("Image upload failed");
           return;
         }
+		
+		//Verify Upload 
+console.log("UPLOAD RESULT:", uploadData);
 
         imageUrl = uploadData.imageUrl;
       }
 
-      const payload = {
-        name,
-        category,
-        description,
-        lat: pendingPos.lat,
-        lng: pendingPos.lng,
-        image_url: imageUrl
-      };
+		const existing = locations.find(l => l.id === editingId);
 
+		const payload = {
+			name,
+			category,
+			description,
+			lat: editingId ? existing.lat : pendingPos.lat,
+			lng: editingId ? existing.lng : pendingPos.lng,
+			image_url: imageUrl ?? existing?.image_url ?? null
+};
+// Test to see if Sending Payload"
+		console.log("SENDING PAYLOAD:", payload);
       if (editingId) {
         await fetch(`https://my-map-backend.onrender.com/locations/${editingId}`, {
           method: "PUT",
@@ -167,7 +173,7 @@ export default function App() {
       const res = await fetch("https://my-map-backend.onrender.com/locations");
       const data = await res.json();
       setLocations(data);
-
+	  setSelectedId(null);
       setName("");
       setDescription("");
       setImage(null);
@@ -185,6 +191,7 @@ export default function App() {
       method: "DELETE"
     });
     setLocations(prev => prev.filter(l => l.id !== id));
+
   }
 
   function startEdit(loc) {
@@ -441,8 +448,23 @@ export default function App() {
                     >
                       <span>• {l.name}</span>
                       <span>
-                        <button onClick={() => startEdit(l)}>✏️</button>
-                        <button onClick={() => deleteLocation(l.id)}>🗑</button>
+						<button
+						  onClick={(e) => {
+							e.stopPropagation(); // 🔥 stops parent click
+							startEdit(l);
+						  }}
+						>
+						  ✏️
+						</button>
+
+						<button
+						  onClick={(e) => {
+							e.stopPropagation(); // 🔥 same here
+							deleteLocation(l.id);
+						  }}
+						>
+						  🗑
+						</button>
                       </span>
                     </div>
                   );
